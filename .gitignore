@@ -1,0 +1,14 @@
+.env
+__pycache__/
+*.pyc
+data/uploads/*
+!data/uploads/.gitkeep
+data/chroma_db/*
+!data/chroma_db/.gitkeep
+.venv/
+venv/
+.DS_Store
+
+# any secrets
+*.key
+*credentials*
