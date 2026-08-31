@@ -33,6 +33,8 @@ def chunk_documents(docs: List[Document]) -> List[Document]:
     # Give every chunk a content-stable id. Chroma receives this id explicitly
     # during indexing, which makes re-uploading a source deterministic.
     for i, chunk in enumerate(chunks):
+        chunk.metadata["chunk_index"] = i
+        chunk.metadata["chunk_count"] = len(chunks)
         identity = "|".join(
             str(chunk.metadata.get(key, ""))
             for key in ("source", "page", "sheet", "row_start", "record_start")

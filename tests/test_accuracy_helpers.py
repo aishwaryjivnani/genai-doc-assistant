@@ -125,6 +125,45 @@ class AccuracyHelperTests(unittest.TestCase):
         self.assertTrue(result["context_sufficient"])
         self.assertEqual(result["retrieved_chunks"][0]["metadata"]["page"], 2)
 
+    def test_list_questions_include_adjacent_chunks(self):
+        from app.agents.graph import retriever_node
+
+        task_one_to_three = Document(
+            page_content="Tasks 1, 2, and 3 cover project setup and ingestion.",
+            metadata={"source": "project.pdf", "chunk_index": 2},
+        )
+        task_four_to_eight = Document(
+            page_content="Tasks 4 through 8 cover chunking, retrieval, RAG, and agents.",
+            metadata={"source": "project.pdf", "chunk_index": 3},
+        )
+        task_nine_to_ten = Document(
+            page_content="Tasks 9 and 10 cover safety controls and deployment.",
+            metadata={"source": "project.pdf", "chunk_index": 4},
+        )
+
+        with patch(
+            "app.agents.graph.similarity_search",
+            return_value=[
+                (task_one_to_three, 0.8),
+                (task_four_to_eight, 1.25),
+                (task_nine_to_ten, 0.9),
+            ],
+        ):
+            result = retriever_node(
+                {
+                    "question": "What tasks are learners expected to complete?",
+                    "search_query": "learner tasks project requirements",
+                    "trace": [],
+                }
+            )
+
+        indexes = {
+            chunk["metadata"]["chunk_index"]
+            for chunk in result["retrieved_chunks"]
+        }
+        self.assertIn(3, indexes)
+        self.assertIn("neighbor expansion enabled", result["trace"][-1])
+
 
 if __name__ == "__main__":
     unittest.main()

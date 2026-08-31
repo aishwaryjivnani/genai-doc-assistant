@@ -97,6 +97,44 @@ def _keyword_hits(query: str, text: str) -> int:
     return sum(1 for term in terms if term in content)
 
 
+def _is_list_or_workflow_question(question: str) -> bool:
+    """Detect questions that need several contiguous document sections."""
+    return bool(
+        re.search(
+            r"\b(tasks?|steps?|stages?|requirements?|components?|roles?|"
+            r"list|all|complete workflow|entire workflow|full workflow)\b",
+            question.casefold(),
+        )
+    )
+
+
+def _neighbor_expansion(
+    candidates: list,
+    seeds: list,
+) -> list:
+    """Add adjacent chunks from the same source for multi-part questions."""
+    seed_positions = {
+        (str(doc.metadata.get("source", "")), int(doc.metadata["chunk_index"]))
+        for doc, _ in seeds
+        if doc.metadata.get("chunk_index") is not None
+    }
+    if not seed_positions:
+        return []
+
+    expanded = []
+    for doc, score in candidates:
+        index = doc.metadata.get("chunk_index")
+        source = str(doc.metadata.get("source", ""))
+        if index is None:
+            continue
+        if any(
+            source == seed_source and abs(int(index) - seed_index) == 1
+            for seed_source, seed_index in seed_positions
+        ):
+            expanded.append((doc, score))
+    return expanded
+
+
 def _source_label(metadata: dict) -> str:
     location = []
     for key, label in (
@@ -150,7 +188,26 @@ def retriever_node(state: AgentState) -> AgentState:
             item[1],
         )
     )
-    results = relevant_results[: settings.TOP_K]
+
+    list_question = _is_list_or_workflow_question(original_query)
+    if list_question:
+        # A list/workflow answer can span adjacent chunks. Include neighbors
+        # even when their individual distance is just outside the gate, then
+        # allow the full candidate window instead of truncating at TOP_K.
+        neighbor_results = _neighbor_expansion(candidates, relevant_results)
+        by_key = {_result_key(doc): (doc, score) for doc, score in relevant_results}
+        for doc, score in neighbor_results:
+            by_key.setdefault(_result_key(doc), (doc, score))
+        expanded_results = list(by_key.values())
+        expanded_results.sort(
+            key=lambda item: (
+                -_keyword_hits(original_query, item[0].page_content),
+                item[1],
+            )
+        )
+        results = expanded_results[: max(settings.TOP_K, settings.RETRIEVAL_CANDIDATE_K)]
+    else:
+        results = relevant_results[: settings.TOP_K]
 
     chunks = [
         {
@@ -167,6 +224,7 @@ def retriever_node(state: AgentState) -> AgentState:
     trace.append(
         f"Retriever: searched original + planner query, kept {len(chunks)} "
         f"relevant chunks from {len(candidates)} candidates"
+        + (" (neighbor expansion enabled)" if list_question else "")
     )
     log_event(
         "retriever_done",
