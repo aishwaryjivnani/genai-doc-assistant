@@ -42,13 +42,13 @@ class AskResponse(BaseModel):
     trace: list
 
 
-@app.get("/health-check")
+@app.api_route("/health-check", methods=["GET", "HEAD"])
 def health_check():
     """Cheap liveness probe for Render. Do not initialize models here."""
     return {"status": "ok"}
 
 
-@app.get("/")
+@app.api_route("/", methods=["GET", "HEAD"])
 def root():
     """Simple landing response for platform probes and browser checks."""
     return {
