@@ -44,8 +44,19 @@ class AskResponse(BaseModel):
 
 @app.get("/health-check")
 def health_check():
-    """API is up and running. Status code = 200."""
-    return {"status": "ok", "chunks_indexed": collection_count()}
+    """Cheap liveness probe for Render. Do not initialize models here."""
+    return {"status": "ok"}
+
+
+@app.get("/")
+def root():
+    """Simple landing response for platform probes and browser checks."""
+    return {
+        "service": "genai-doc-assistant",
+        "status": "ok",
+        "docs": "/docs",
+        "health": "/health-check",
+    }
 
 
 @app.post("/upload-document")

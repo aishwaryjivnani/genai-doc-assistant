@@ -170,6 +170,9 @@ Matches the options discussed in class:
   the original and planned query, keeps complete structured records, removes
   stale chunks when a source is re-uploaded, and logs candidate distances so
   `MAX_DISTANCE` can be calibrated with a small question/answer test set.
+- **Health check is a liveness probe.** `/health-check` intentionally avoids
+  loading the embedding model; document indexing initializes the local model
+  only when needed.
 
 ## Possible next steps
 
