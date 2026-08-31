@@ -46,12 +46,18 @@ st.caption("Personal capstone project — Web UI calling the FastAPI backend.")
 
 # Health check
 try:
-    health = requests.get(f"{API_BASE}/health-check", timeout=5).json()
-    chunks_indexed = health.get("chunks_indexed")
-    if chunks_indexed is None:
-        st.sidebar.success("API is up")
+    health_response = requests.get(f"{API_BASE}/health-check", timeout=5)
+    health = health_response.json()
+    if health_response.ok:
+        chunks_indexed = health.get("chunks_indexed")
+        if chunks_indexed is None:
+            st.sidebar.success("API is up")
+        else:
+            st.sidebar.success(f"API is up — {chunks_indexed} chunks indexed")
+    elif health_response.status_code == 503:
+        st.sidebar.warning(health.get("detail", "API is still warming up"))
     else:
-        st.sidebar.success(f"API is up — {chunks_indexed} chunks indexed")
+        st.sidebar.error(health.get("detail", f"API returned {health_response.status_code}"))
 except Exception:
     st.sidebar.error(f"Can't reach the API at {API_BASE}. Is uvicorn running?")
 

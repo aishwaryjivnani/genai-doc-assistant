@@ -29,19 +29,39 @@ from app.services.vectorstore import (
 from app.utils.guardrails import log_event, validate_question, validate_upload
 
 
+_embedding_ready = False
+_embedding_warmup_error = None
+
+
+async def _warmup_embeddings() -> None:
+    """Warm the model without blocking Uvicorn from opening its port."""
+    global _embedding_ready, _embedding_warmup_error
+    try:
+        await asyncio.to_thread(warmup_vectorstore)
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:
+        _embedding_warmup_error = str(exc)
+        log_event("startup_warmup_error", error=str(exc))
+        print(f"Startup: embedding warm-up failed: {exc}", flush=True)
+    else:
+        _embedding_ready = True
+        print("Startup: embedding model and vector store ready", flush=True)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Warm local embedding dependencies before Render routes traffic here."""
-    print("Startup: loading embedding model and vector store...", flush=True)
+    """Start warming local embedding dependencies after the port is available."""
+    global _embedding_ready, _embedding_warmup_error
+    _embedding_ready = False
+    _embedding_warmup_error = None
+    print("Startup: warming embedding model and vector store...", flush=True)
+    warmup_task = asyncio.create_task(_warmup_embeddings())
     try:
-        # Model loading and the first inference are blocking operations. Run
-        # them off the event loop so startup remains cooperative locally.
-        await asyncio.to_thread(warmup_vectorstore)
-    except Exception as exc:
-        log_event("startup_warmup_error", error=str(exc))
-        raise
-    print("Startup: embedding model and vector store ready", flush=True)
-    yield
+        yield
+    finally:
+        if not warmup_task.done():
+            warmup_task.cancel()
 
 
 app = FastAPI(
@@ -64,7 +84,12 @@ class AskResponse(BaseModel):
 
 @app.api_route("/health-check", methods=["GET", "HEAD"])
 def health_check():
-    """Cheap liveness probe; model warm-up finishes before the app serves traffic."""
+    """Readiness probe for Render; returns 200 only after warm-up completes."""
+    if not _embedding_ready:
+        detail = "Embedding model is still warming up."
+        if _embedding_warmup_error:
+            detail = f"Embedding warm-up failed: {_embedding_warmup_error}"
+        raise HTTPException(status_code=503, detail=detail)
     return {"status": "ok"}
 
 
@@ -85,6 +110,12 @@ async def upload_document(file: UploadFile = File(...)):
     Injects a data file into the system: saves it, extracts text, chunks
     it, embeds it, and stores it in the vector DB for later retrieval.
     """
+    if not _embedding_ready:
+        raise HTTPException(
+            status_code=503,
+            detail="Embedding model is still warming up. Please retry shortly.",
+        )
+
     contents = await file.read()
     is_valid, error = validate_upload(file.filename, len(contents))
     if not is_valid:
@@ -123,6 +154,12 @@ def ask_questions(request: AskRequest):
     is_valid, error = validate_question(request.question)
     if not is_valid:
         raise HTTPException(status_code=400, detail=error)
+
+    if not _embedding_ready:
+        raise HTTPException(
+            status_code=503,
+            detail="Embedding model is still warming up. Please retry shortly.",
+        )
 
     if collection_count() == 0:
         raise HTTPException(
