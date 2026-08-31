@@ -82,7 +82,7 @@ genai-doc-assistant/
 - **UI (optional)**: Streamlit, calling the API over HTTP
 - **Vector DB**: ChromaDB (local, persisted to `data/chroma_db/`)
 - **Embeddings**: `sentence-transformers/all-MiniLM-L6-v2` (local, free, no API key)
-- **LLM**: Google Gemini free tier (`gemini-2.5-flash` by default) via `langchain-google-genai` — no OpenAI, no Ollama
+- **LLM**: OpenAI GPT-5.6 Luna (`gpt-5.6-luna` by default) via the Responses API
 - **Agent framework**: LangGraph (state graph with a conditional retry loop)
 - **Document parsing**: `pypdf` (PDF), `pandas`/`openpyxl` (CSV/Excel), `json`/`pyyaml` (JSON/YAML), plain read (TXT)
 
@@ -100,10 +100,9 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Get a **free** Gemini API key at https://aistudio.google.com/apikey, paste it
-into `.env` as `GOOGLE_API_KEY`. Google's free-tier model line-up shifts
-every few months — check https://ai.google.dev/gemini-api/docs/pricing and
-update `GEMINI_MODEL` in `.env` if the model you're using gets retired.
+Create an OpenAI API key at https://platform.openai.com/api-keys and paste it
+into `.env` as `OPENAI_API_KEY`. The model is configured through
+`OPENAI_MODEL`, so it can be changed without editing application code.
 
 ```bash
 # 4. Run the API (standalone app)
@@ -120,6 +119,11 @@ curl -X POST http://localhost:8080/ask-questions \
 ```
 
 Or open the interactive Swagger docs at `http://localhost:8080/docs`.
+
+**Accuracy helper tests:** after installing `requirements.txt`, run:
+```bash
+python -m unittest discover -s tests -v
+```
 
 **Optional Web UI:**
 ```bash
@@ -141,7 +145,7 @@ Matches the options discussed in class:
 3. **Cloud (Render — free open-source-friendly tier)**: push this repo to
    GitHub, create a new "Web Service" on render.com pointing at the repo,
    set the start command to `uvicorn app.api.main:app --host 0.0.0.0 --port
-   $PORT`, and add `GOOGLE_API_KEY` as an environment variable in the
+   $PORT`, and add `OPENAI_API_KEY` as an environment variable in the
    dashboard.
 4. **Cloud (AWS/Azure/GCP)**: any container hosting service (ECS, App
    Service, Cloud Run) can run the same Docker image.
@@ -149,22 +153,23 @@ Matches the options discussed in class:
 ## Limitations & challenges faced
 
 - **Relevance threshold is heuristic.** `guardrails.has_sufficient_context`
-  uses a simple distance cutoff on Chroma's default metric — tune
-  `MIN_RELEVANCE_SCORE` against your own documents.
+  uses the `MAX_DISTANCE` cutoff on Chroma's default metric — tune it against
+  your own documents. Lower distance means a more similar match.
 - **No OCR.** Scanned/image-only PDFs won't extract text via `pypdf`.
 - **No chat history.** Each question is handled independently.
 - **No auth.** Fine for local/personal use, not for a shared deployment.
-- **Gemini free-tier rate limits.** The free tier has request-per-minute
-  and request-per-day caps; heavy testing (each question can trigger 2–4
-  Gemini calls: planner, reasoning, validator, and possibly a retry) can
-  hit them. Space out requests during testing.
-- **Model name churn.** Google retires/renames free-tier Gemini models every
-  few months (e.g. `gemini-2.0-flash` was retired June 2026) — this is the
-  main practical challenge of building on a free LLM tier long-term.
-  `GEMINI_MODEL` is kept in `.env` specifically so this is a one-line fix.
+- **OpenAI API costs and limits.** Each question can trigger 2–4 OpenAI API
+  calls: planner, reasoning, validator, and possibly a retry. Monitor usage
+  and configure billing/limits for the API project.
+- **Model name churn.** OpenAI model availability and identifiers can change.
+  `OPENAI_MODEL` is kept in `.env` so this is a one-line configuration fix.
 - **Validator is one LLM checking another.** Reduces obvious hallucinations
   but isn't a formal correctness guarantee.
 - **Single shared vector collection.** No per-user/session isolation.
+- **Accuracy depends on retrieval calibration.** The retriever searches both
+  the original and planned query, keeps complete structured records, removes
+  stale chunks when a source is re-uploaded, and logs candidate distances so
+  `MAX_DISTANCE` can be calibrated with a small question/answer test set.
 
 ## Possible next steps
 

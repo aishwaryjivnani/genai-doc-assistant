@@ -9,6 +9,7 @@ Maps directly to the "Control:" checklist from the class notes:
     app/agents/graph.py)
 """
 import logging
+import re
 from typing import List, Tuple
 
 from langchain_core.documents import Document
@@ -58,13 +59,19 @@ def has_sufficient_context(results: List[Tuple[Document, float]]) -> bool:
     """
     if not results:
         return False
-    best_score = min(score for _, score in results)
-    # Chroma returns L2 distances; typical sentence-embedding distances for
-    # relevant content sit between 0–2. Use a flat upper bound of 2.0 so that
-    # MIN_RELEVANCE_SCORE (0–1) scales it proportionally (0.25 → threshold 1.5
-    # was too tight; now 2.0 is the baseline and MIN_RELEVANCE_SCORE trims it).
-    threshold = 2.0 * (1 - settings.MIN_RELEVANCE_SCORE / 2)
-    return best_score <= threshold
+    best_score = min(float(score) for _, score in results)
+    return best_score <= settings.MAX_DISTANCE
+
+
+def keep_relevant_results(
+    results: List[Tuple[Document, float]],
+) -> List[Tuple[Document, float]]:
+    """Drop vector matches whose distance is outside the calibrated gate."""
+    return [
+        (document, float(score))
+        for document, score in results
+        if float(score) <= settings.MAX_DISTANCE
+    ]
 
 
 NO_CONTEXT_RESPONSE = (
@@ -88,8 +95,7 @@ def strip_prompt_injection_markers(text: str) -> str:
     ]
     cleaned = text
     for phrase in suspicious_phrases:
-        if phrase in cleaned.lower():
-            cleaned = cleaned.replace(phrase, "[filtered]")
+        cleaned = re.sub(re.escape(phrase), "[filtered]", cleaned, flags=re.IGNORECASE)
     return cleaned
 
 

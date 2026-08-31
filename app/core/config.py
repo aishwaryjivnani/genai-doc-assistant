@@ -10,9 +10,9 @@ load_dotenv()
 
 
 class Settings:
-    # LLM - Google Gemini (free tier)
-    GOOGLE_API_KEY: str = os.getenv("GOOGLE_API_KEY", "")
-    GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+    # LLM - OpenAI Responses API
+    OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
+    OPENAI_MODEL: str = os.getenv("OPENAI_MODEL", "gpt-5.6-luna")
 
     # Embeddings (local model, no API key required)
     EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
@@ -22,13 +22,21 @@ class Settings:
     CHUNK_OVERLAP: int = int(os.getenv("CHUNK_OVERLAP", 120))
 
     # Retrieval
-    TOP_K: int = int(os.getenv("TOP_K", 4))
-    MIN_RELEVANCE_SCORE: float = float(os.getenv("MIN_RELEVANCE_SCORE", 0.25))
+    # TOP_K is the number of final chunks sent to the LLM. Retrieve a larger
+    # candidate set first so exact terms can compete with semantic matches.
+    TOP_K: int = int(os.getenv("TOP_K", 5))
+    RETRIEVAL_CANDIDATE_K: int = int(os.getenv("RETRIEVAL_CANDIDATE_K", 8))
+    # Chroma returns a distance (lower is better), not a relevance score.
+    # Calibrate this against the application's own documents.
+    MAX_DISTANCE: float = float(os.getenv("MAX_DISTANCE", 1.2))
 
     # Storage
     VECTOR_DB_DIR: str = os.getenv("VECTOR_DB_DIR", "data/chroma_db")
     UPLOAD_DIR: str = os.getenv("UPLOAD_DIR", "data/uploads")
     COLLECTION_NAME: str = "enterprise_docs"
+    CHROMA_ANONYMIZED_TELEMETRY: bool = (
+        os.getenv("CHROMA_ANONYMIZED_TELEMETRY", "false").lower() == "true"
+    )
 
     # Agent controls
     MAX_REASONING_RETRIES: int = int(os.getenv("MAX_REASONING_RETRIES", 2))

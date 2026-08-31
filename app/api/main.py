@@ -9,16 +9,20 @@ Fast-API Core Endpoints, exactly as specified in the class notes:
 Run with: uvicorn app.api.main:app --host 0.0.0.0 --port 8080
 """
 import os
-import shutil
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
+from openai import APIError, NotFoundError, RateLimitError
 from pydantic import BaseModel
 
 from app.agents.graph import run_agentic_rag
 from app.core.config import settings
 from app.services.chunking import chunk_documents
 from app.services.ingestion import load_document
-from app.services.vectorstore import add_chunks, collection_count, reset_collection
+from app.services.vectorstore import (
+    collection_count,
+    replace_source_chunks,
+    reset_collection,
+)
 from app.utils.guardrails import log_event, validate_question, validate_upload
 
 app = FastAPI(
@@ -62,7 +66,11 @@ async def upload_document(file: UploadFile = File(...)):
     try:
         docs = load_document(save_path)
         chunks = chunk_documents(docs)
-        added = add_chunks(chunks)
+        if not chunks:
+            raise ValueError(
+                "No readable text was found in the document. Scanned PDFs may require OCR."
+            )
+        added = replace_source_chunks(os.path.basename(file.filename), chunks)
     except Exception as e:
         log_event("ingestion_error", filename=file.filename, error=str(e))
         raise HTTPException(status_code=422, detail=f"Failed to process file: {e}")
@@ -91,7 +99,38 @@ def ask_questions(request: AskRequest):
             detail="No documents indexed yet. Call /upload-document first.",
         )
 
-    result = run_agentic_rag(request.question)
+    try:
+        result = run_agentic_rag(request.question)
+    except RateLimitError as e:
+        raise HTTPException(
+            status_code=429,
+            detail=(
+                "OpenAI rate limit or quota reached. Check your API project "
+                "billing and limits, then try again."
+            ),
+            headers={"Retry-After": "60"},
+        ) from e
+    except NotFoundError as e:
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                f"Configured OpenAI model '{settings.OPENAI_MODEL}' is not "
+                "available to this API key. Update OPENAI_MODEL in .env."
+            ),
+        ) from e
+    except APIError as e:
+        status_code = getattr(e, "status_code", None)
+        log_event(
+            "openai_api_error",
+            error_type=type(e).__name__,
+            status_code=status_code,
+            error=str(e),
+        )
+        provider_status = f" ({status_code})" if status_code else ""
+        raise HTTPException(
+            status_code=502,
+            detail=f"OpenAI API request failed{provider_status}: {str(e)}",
+        ) from e
     log_event("ask_questions", question=request.question)
 
     return AskResponse(

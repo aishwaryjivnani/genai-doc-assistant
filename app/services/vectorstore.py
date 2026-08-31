@@ -11,6 +11,7 @@ similarity search -> return top-N results.
 """
 from typing import List, Tuple
 
+from chromadb.config import Settings as ChromaSettings
 from langchain_chroma import Chroma
 from langchain_core.documents import Document
 from langchain_huggingface import HuggingFaceEmbeddings
@@ -35,6 +36,13 @@ def get_vectorstore() -> Chroma:
             collection_name=settings.COLLECTION_NAME,
             embedding_function=get_embeddings(),
             persist_directory=settings.VECTOR_DB_DIR,
+            client_settings=ChromaSettings(
+                is_persistent=True,
+                persist_directory=settings.VECTOR_DB_DIR,
+                anonymized_telemetry=settings.CHROMA_ANONYMIZED_TELEMETRY,
+                chroma_product_telemetry_impl="app.utils.chroma_telemetry.NoOpTelemetry",
+                chroma_telemetry_impl="app.utils.chroma_telemetry.NoOpTelemetry",
+            ),
         )
     return _vectorstore
 
@@ -44,14 +52,28 @@ def add_chunks(chunks: List[Document]) -> int:
     if not chunks:
         return 0
     store = get_vectorstore()
-    store.add_documents(chunks)
+    ids = [chunk.metadata["chunk_id"] for chunk in chunks]
+    store.add_documents(chunks, ids=ids)
     return len(chunks)
+
+
+def replace_source_chunks(source: str, chunks: List[Document]) -> int:
+    """Replace one source file without leaving stale or duplicate chunks."""
+    store = get_vectorstore()
+    # langchain-chroma's high-level delete() currently forwards only ids;
+    # use the underlying Chroma collection for metadata-based deletion.
+    existing = store._collection.get(where={"source": source})
+    existing_ids = existing.get("ids", [])
+    if existing_ids:
+        store._collection.delete(ids=existing_ids)
+    return add_chunks(chunks)
 
 
 def similarity_search(query: str, k: int = None) -> List[Tuple[Document, float]]:
     """
-    Cosine-similarity search. Returns (document, distance_score) pairs,
-    most relevant first (lower distance = more similar).
+    Returns (document, distance_score) pairs, most relevant first
+    (lower distance = more similar). The default Chroma collection metric is
+    distance-based; callers must not treat this value as a percentage score.
     """
     store = get_vectorstore()
     k = k or settings.TOP_K

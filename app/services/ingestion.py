@@ -32,7 +32,12 @@ def load_pdf(path: str) -> List[Document]:
 def load_txt(path: str) -> List[Document]:
     with open(path, "r", encoding="utf-8", errors="ignore") as f:
         text = f.read()
-    return [Document(page_content=text, metadata={"source": os.path.basename(path)})]
+    return [
+        Document(
+            page_content=text,
+            metadata={"source": os.path.basename(path), "structured": False},
+        )
+    ]
 
 
 def load_csv(path: str) -> List[Document]:
@@ -75,7 +80,11 @@ def load_json(path: str) -> List[Document]:
             docs.append(
                 Document(
                     page_content="\n".join(lines),
-                    metadata={"source": source, "record_type": "summary"},
+                    metadata={
+                        "source": source,
+                        "record_type": "summary",
+                        "structured": True,
+                    },
                 )
             )
 
@@ -90,6 +99,7 @@ def load_json(path: str) -> List[Document]:
                         "source": source,
                         "record_start": start,
                         "record_end": start + len(batch),
+                        "structured": True,
                     },
                 )
             )
@@ -98,7 +108,7 @@ def load_json(path: str) -> List[Document]:
     return [
         Document(
             page_content=json.dumps(data, indent=2),
-            metadata={"source": source},
+            metadata={"source": source, "structured": True},
         )
     ]
 
@@ -109,7 +119,7 @@ def load_yaml(path: str) -> List[Document]:
     return [
         Document(
             page_content=yaml.dump(data, default_flow_style=False),
-            metadata={"source": os.path.basename(path)},
+            metadata={"source": os.path.basename(path), "structured": True},
         )
     ]
 
@@ -120,11 +130,16 @@ def _dataframe_to_documents(df: pd.DataFrame, path: str, sheet_name: str = None)
     can find specific rows without losing column context.
     """
     docs = []
-    rows_per_chunk = 20
+    rows_per_chunk = 10
     for start in range(0, len(df), rows_per_chunk):
         chunk_df = df.iloc[start : start + rows_per_chunk]
         text = chunk_df.to_string(index=False)
-        meta = {"source": os.path.basename(path), "row_start": start, "row_end": start + len(chunk_df)}
+        meta = {
+            "source": os.path.basename(path),
+            "row_start": start,
+            "row_end": start + len(chunk_df),
+            "structured": True,
+        }
         if sheet_name:
             meta["sheet"] = sheet_name
         docs.append(Document(page_content=text, metadata=meta))
