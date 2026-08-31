@@ -15,7 +15,9 @@ class Settings:
     OPENAI_MODEL: str = os.getenv("OPENAI_MODEL", "gpt-5.6-luna")
 
     # Embeddings (local model, no API key required)
-    EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
+    EMBEDDING_MODEL: str = os.getenv(
+        "EMBEDDING_MODEL", "BAAI/bge-small-en-v1.5"
+    )
 
     # Chunking
     CHUNK_SIZE: int = int(os.getenv("CHUNK_SIZE", 800))
