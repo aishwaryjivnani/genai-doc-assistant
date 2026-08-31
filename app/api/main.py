@@ -8,7 +8,9 @@ Fast-API Core Endpoints, exactly as specified in the class notes:
 
 Run with: uvicorn app.api.main:app --host 0.0.0.0 --port 8080
 """
+import asyncio
 import os
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from openai import APIError, NotFoundError, RateLimitError
@@ -22,13 +24,31 @@ from app.services.vectorstore import (
     collection_count,
     replace_source_chunks,
     reset_collection,
+    warmup_vectorstore,
 )
 from app.utils.guardrails import log_event, validate_question, validate_upload
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Warm local embedding dependencies before Render routes traffic here."""
+    print("Startup: loading embedding model and vector store...", flush=True)
+    try:
+        # Model loading and the first inference are blocking operations. Run
+        # them off the event loop so startup remains cooperative locally.
+        await asyncio.to_thread(warmup_vectorstore)
+    except Exception as exc:
+        log_event("startup_warmup_error", error=str(exc))
+        raise
+    print("Startup: embedding model and vector store ready", flush=True)
+    yield
+
 
 app = FastAPI(
     title="GenAI Doc Assistant",
     description="Agentic RAG API for querying enterprise documents.",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 
@@ -44,7 +64,7 @@ class AskResponse(BaseModel):
 
 @app.api_route("/health-check", methods=["GET", "HEAD"])
 def health_check():
-    """Cheap liveness probe for Render. Do not initialize models here."""
+    """Cheap liveness probe; model warm-up finishes before the app serves traffic."""
     return {"status": "ok"}
 
 

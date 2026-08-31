@@ -29,6 +29,12 @@ def get_embeddings():
     return _embeddings
 
 
+def warmup_vectorstore() -> None:
+    """Load the embedding model and run one inference before serving traffic."""
+    get_vectorstore()
+    get_embeddings().embed_query("startup embedding warmup")
+
+
 def get_vectorstore() -> Chroma:
     global _vectorstore
     if _vectorstore is None:
