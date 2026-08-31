@@ -14,7 +14,7 @@ from typing import List, Tuple
 from chromadb.config import Settings as ChromaSettings
 from langchain_chroma import Chroma
 from langchain_core.documents import Document
-from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_community.embeddings.fastembed import FastEmbedEmbeddings
 
 from app.core.config import settings
 
@@ -25,7 +25,7 @@ _vectorstore = None
 def get_embeddings():
     global _embeddings
     if _embeddings is None:
-        _embeddings = HuggingFaceEmbeddings(model_name=settings.EMBEDDING_MODEL)
+        _embeddings = FastEmbedEmbeddings(model_name=settings.EMBEDDING_MODEL)
     return _embeddings
 
 

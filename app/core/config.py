@@ -33,7 +33,9 @@ class Settings:
     # Storage
     VECTOR_DB_DIR: str = os.getenv("VECTOR_DB_DIR", "data/chroma_db")
     UPLOAD_DIR: str = os.getenv("UPLOAD_DIR", "data/uploads")
-    COLLECTION_NAME: str = "enterprise_docs"
+    # Keep collections isolated when the embedding implementation changes so
+    # vectors from the previous model are never mixed with new vectors.
+    COLLECTION_NAME: str = "enterprise_docs_fastembed"
     CHROMA_ANONYMIZED_TELEMETRY: bool = (
         os.getenv("CHROMA_ANONYMIZED_TELEMETRY", "false").lower() == "true"
     )
